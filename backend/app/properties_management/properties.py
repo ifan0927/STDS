@@ -71,7 +71,7 @@ async def get_property_leases(
             l = doc.to_dict()
             
 
-        return(datas)  
+        return
     except Exception as e:
         raise HTTPException(
             status_code= 500,
