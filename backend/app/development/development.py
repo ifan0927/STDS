@@ -1,5 +1,5 @@
 from fastapi import APIRouter,HTTPException,Depends
-from ..dependencies.dependencies import get_app_settings
+from ..dependency.dependencies import get_app_settings
 from firebase_admin import auth
 import requests
 
