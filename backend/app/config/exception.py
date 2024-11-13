@@ -10,3 +10,6 @@ class CacheError(Exception):
 class AuthorizationError(Exception):
     """授權相關錯誤"""
     pass
+
+class ValueError(Exception):
+    pass

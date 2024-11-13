@@ -1,5 +1,5 @@
 from fastapi import HTTPException
-from Base import BaseHandler
+from .Base import BaseHandler
 
 class LeasesHandler(BaseHandler):
         

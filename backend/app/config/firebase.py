@@ -21,6 +21,3 @@ class FirebaseClient:
     
 security = HTTPBearer()
 firebase = FirebaseClient.get_instance()
-
-async def get_firestore():
-    return firebase.db
