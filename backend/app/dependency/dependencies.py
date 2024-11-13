@@ -1,6 +1,6 @@
 from fastapi import HTTPException,Depends,Request
 from ..config.firebase import firebase, security
-from ..models.property import PropertyHandler
+from ..models.Property import PropertyHandler
 from ..models.Users import UserHandler
 from firebase_admin import auth
 '''

@@ -1,8 +1,5 @@
 from fastapi import APIRouter,Depends,HTTPException
-from google.cloud.firestore import FieldFilter
 from ..dependency.dependencies import verify_token 
-from ..config.logger import get_logger
-
 
 router = APIRouter(prefix="/properties-management")
 
@@ -38,7 +35,8 @@ async def get_property(
             status_code=500,
             detail=f"Error msg:{e}"
         )
+    
 
 
 
-
+    

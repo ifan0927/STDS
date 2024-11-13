@@ -1,21 +1,18 @@
 from fastapi import HTTPException
-from ..config.firebase import get_firestore
-from ..config.cache import CacheHandler
-from ..config.logger import get_logger
+from Base import BaseHandler
 
+class PropertyHandler(BaseHandler):
 
-
-class PropertyHandler():
-
-    def __init__(self, acess_company):
-        self.access_company = acess_company
-        self.cache = CacheHandler()
-    
-    async def db_init(self):
-        self.db = await get_firestore()
-        self.logging = await get_logger()
+    def __init__(self, access_company: str):
+        super().__init__(access_company)
         
     async def properties_list(self):
+        """
+        取得物業清單，只返回有權限的物業
+        
+        Returns:
+            Optional[List[Dict[str, Any]]]: 物業清單或 None (若無資料)
+        """
         try:
             results = []
             if self.cache.get('properties'):
@@ -48,6 +45,15 @@ class PropertyHandler():
             raise HTTPException(status_code=500, detail=str(e))
         
     async def get_property(self,property_id):
+        """
+        取得單一物業資料
+        
+        Args:
+            property_id (str): 物業 ID
+            
+        Returns:
+            Optional[Dict[str, Any]]: 物業資料或 None (若無權限或不存在)
+        """
         try:
             if self.cache.get(property_id):
                 value = self.cache.get(property_id)
@@ -63,7 +69,5 @@ class PropertyHandler():
         except Exception as e:
             self.logging.error(f"取得物業資料失敗{property_id}:{str(e)}")
             raise HTTPException(status_code=500, detail=str(e))
-    
-
-    def _has_access(self, access_list):
-        return self.access_company in access_list
+        
+    ##房號r 繳費類型l 租屋者t 剩餘天數(租約到期日期)l 電話t 下次繳租日l room_id , leases_id , tenants_id
