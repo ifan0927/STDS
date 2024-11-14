@@ -8,7 +8,11 @@ router = APIRouter(prefix="/properties-management")
 async def get_properties(
     token = Depends(verify_token)
 ):
-    return True
+    try:
+        property_handler = PropertyHandler(token['uid'])
+        return await property_handler.get_item_list()
+    except Exception as e:
+        raise HTTPException(status_code=500,detail=f"/properties error:{str(e)}")
     
 @router.get("/properties/{property_id}",tags=['properties-management'])
 async def get_property(

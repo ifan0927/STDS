@@ -79,7 +79,7 @@ class BaseHandler(Generic[T],ABC):
                 else:
                     doc_ref = self.db.collection(self.cache_catagory).document(doc.id)
                     item = self.model_class(**doc_ref.get().to_dict())
-                    self.cahce.set(self.cache_catagory,item.id,item)
+                    self.cache.set(self.cache_catagory,item.id,item)
                 if item is not None and self._has_access(item.access.companies):
                     result.append(item)
             return result
