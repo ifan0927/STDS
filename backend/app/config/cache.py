@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Optional, List
 from datetime import datetime, timedelta
 import threading
 
@@ -15,6 +15,7 @@ class Cache:
             else:
                 del self._cache[key]
         return None
+
         
     def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
         expires_at = datetime.now() + timedelta(seconds=ttl or self._default_ttl)

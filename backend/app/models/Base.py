@@ -3,7 +3,7 @@ from ..config.firebase import firebase
 from ..config.cache import CacheHandler
 from ..config.logger import logger
 from .Users import UserHandler
-from typing import TypeVar, Generic, Type
+from typing import TypeVar, Generic, Type, Any
 from pydantic import BaseModel, Field
 from abc import ABC
 from typing import List, Optional
@@ -48,8 +48,6 @@ class BaseHandler(Generic[T],ABC):
             else:
                 doc_ref = self.db.collection(self.collection_name).document(item_id)
                 doc = doc_ref.get()
-                print(doc.to_dict())
-                print("Model class:", self.model_class)
                 if doc: 
                     item = self.model_class(**doc.to_dict())
                 else:
@@ -64,9 +62,30 @@ class BaseHandler(Generic[T],ABC):
 
         except Exception as e:
             raise HTTPException(status_code=500,detail=f"{str(e)}")
-    
-   
+        
 
+    async def get_item_list(self) -> List[Any]:
+        '''
+        返回handler處理類別的List
+        '''
+        try:
+            ##只獲取文檔的參考資訊（ID和路徑），不包含文檔內容
+            result = []
+            docs = self.db.collection(self.cache_catagory).list_documents()
+            for doc in docs:
+                item = self.cache.get(self.cache_catagory,doc.id)
+                if item:
+                    result.append(item)
+                else:
+                    doc_ref = self.db.collection(self.cache_catagory).document(doc.id)
+                    item = self.model_class(**doc_ref.get().to_dict())
+                    self.cahce.set(self.cache_catagory,item.id,item)
+                if item is not None and self._has_access(item.access.companies):
+                    result.append(item)
+            return result
+        except Exception as e:
+            raise HTTPException(status_code=500,detail=f"PropertyHandler.get_item_list error: {str(e)}")
+            
 
     async def _has_access(self, access_list):
         return await self.User.get_access() in access_list
