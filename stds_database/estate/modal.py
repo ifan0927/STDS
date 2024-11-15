@@ -121,7 +121,7 @@ class Logs:
     user_id : str # new 
     member : List[str] # new blank for now
     old_user_id : str # estate_schedule_uid
-    date : datetime # estate_schedule_date
+    updated_at : datetime # estate_schedule_date
     category : str #  estate_schedule_kind
     facility : str # estate_schedule_facility
     content : str # estate_schedule_content
@@ -142,7 +142,7 @@ class Electric:
     degrees : str # estate_electric_degrees
     user_id : str # blank
     old_user_id: str #estate_electric_uid
-    update_time: str # estate_electric_update
+    updated_at: str # estate_electric_update
 
     @staticmethod
     def time_transfer(string) -> datetime:

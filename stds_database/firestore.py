@@ -7,6 +7,33 @@ import argparse
 from datetime import datetime
 import random,string
 
+def convert_dates_to_timestamp(data):
+    # 深拷貝原始數據以避免修改原始物件
+    new_data = data.copy()
+    
+    # 定義需要轉換的日期欄位 (純日期格式)
+    date_fields = ['time_start', 'time_end', 'time_early', "birthday"]
+    
+    # 轉換純日期欄位 ('%Y-%m-%d')
+    for field in date_fields:
+        if field in new_data and new_data[field]:
+            try:
+                date = datetime.strptime(new_data[field], '%Y-%m-%d')
+                new_data[field] = firestore.SERVER_TIMESTAMP if date is None else date
+            except ValueError:
+                print(f"無法解析日期: {new_data[field]}")
+                continue
+
+    # 處理 updated_at (完整日期時間格式 '%Y-%m-%d %H:%M:%S')
+    if 'updated_at' in new_data and new_data['updated_at']:
+        try:
+            date = datetime.strptime(new_data['updated_at'], '%Y-%m-%d %H:%M:%S')
+            new_data['updated_at'] = firestore.SERVER_TIMESTAMP if date is None else date
+        except ValueError:
+            print(f"無法解析 updated_at 日期: {new_data['updated_at']}")
+    
+    return new_data
+
 def generateId(prefix, length = 8):
 
     return prefix + ''.join(random.choice(string.ascii_letters + string.digits) for x in range(10))
@@ -58,13 +85,17 @@ def upload_to_firestore(db: firestore.Client, collection_name: str, data: Any):
                     
                     
                     used_ids.add(doc_id)
-                    
-                    # 準備文件資料
-                    doc_data = {
-                        **item,  # 原始資料
-                        "updated_at": firestore.SERVER_TIMESTAMP
-                    }
-                    
+                    converted_data  = convert_dates_to_timestamp(item)
+                    if 'updated_at' in converted_data and converted_data['updated_at']:
+                        doc_data = {
+                            **converted_data
+                        }
+                    else:
+                        doc_data = {
+                            **converted_data,  
+                            "updated_at": firestore.SERVER_TIMESTAMP
+                        }
+                        
                     # 添加到批次
                     doc_ref = db.collection(collection_name).document(doc_id)
                     batch.set(doc_ref, doc_data)

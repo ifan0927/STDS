@@ -208,7 +208,7 @@ def create_estate_logs(row:dict) ->Logs:
         user_id = "",
         member = [],
         old_user_id = row.get('estate_schedule_uid','').strip(),
-        date = date,
+        updated_at = date,
         category = row.get('estate_schedule_kind','').strip(),
         facility = row.get('estate_schedule_facility','').strip(),
         content = row.get('estate_schedule_content','').strip(),
@@ -236,7 +236,7 @@ def create_electric_logs(row:dict)-> Electric:
         degrees = degree,
         user_id = '',
         old_user_id = row.get('estate_electric_uid','').strip(),
-        update_time = date
+        updated_at = date
     )
 
 def write_to_json(filename, objects):
