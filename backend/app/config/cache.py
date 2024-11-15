@@ -69,46 +69,46 @@ class CacheHandler:
     def __init__(self):
         # 確保初始化只執行一次
         if not self._initialized:
-            self._catagory = {}
+            self._category = {}
             self._lock = threading.Lock()
             self._default_ttl = 3600  # 預設過期時間（秒）
             self._initialized = True
 
-    def get(self, catagory:str,key: str) -> Optional[Any]:
+    def get(self, category:str,key: str) -> Optional[Any]:
         with self._lock:
-            if catagory in self._catagory:
-                cache = self._catagory[catagory]
+            if category in self._category:
+                cache = self._category[category]
                 return cache.get(key)
                 
             return None
         
-    def set(self, catagory: str, key: str, value: Any) -> None:
+    def set(self, category: str, key: str, value: Any) -> None:
         with self._lock:
-            if catagory not in self._catagory:
-                self._catagory[catagory] = Cache()
-            self._catagory[catagory].set(key, value)
+            if category not in self._category:
+                self._category[category] = Cache()
+            self._category[category].set(key, value)
 
 
-    def delete(self, catagory: str ,key: str) -> None:
+    def delete(self, category: str ,key: str) -> None:
         with self._lock:
-            self._catagory[catagory].delete(key)
+            self._category[category].delete(key)
 
-    def clear(self, catagory: str) -> None:
+    def clear(self, category: str) -> None:
         with self._lock:
-            self._catagory[catagory].clear()
+            self._category[category].clear()
 
 
     # 添加一些有用的管理方法
-    def get_cache_stats_catagory(self, catagory: str) -> Optional[dict]:
+    def get_cache_stats_category(self, category: str) -> Optional[dict]:
         with self._lock:
-            if catagory in self._catagory:
-                return self._catagory[catagory].get_cache_stats()
+            if category in self._category:
+                return self._category[category].get_cache_stats()
             return None
 
     def cleanup_expired(self) -> dict:  # 改變返回型別
         """清理過期項目並返回每個category的清理數量"""
         cleanup_results = {}
         with self._lock:
-            for category, cache in self._catagory.items():
+            for category, cache in self._category.items():
                 cleanup_results[category] = cache.cleanup_expired()
         return cleanup_results

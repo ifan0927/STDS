@@ -21,16 +21,22 @@ async def get_property(
 ):
     try:
         property_handler = PropertyHandler(token['uid'])
-        result = await property_handler.get_item(property_id)
-        if result is None:
-            raise HTTPException(status_code=403,detail="無存取權限")
-        return result
+        return await property_handler.get_item(property_id)
     except Exception as e:
         raise HTTPException(
             status_code=500,
             detail=f"Error msg:{e}"
         )
     
+@router.get("/properties/{property_id}/leases",tags=['properties-management'])
+async def get_leases_list(
+    property_id : str,
+    token = Depends(verify_token)
+):
+    '''
+    返回房號(包含空房,有房客)，房客姓名，電話，繳費類型，租約到期日，繳租日期
+    '''
+    return True
 
 
 

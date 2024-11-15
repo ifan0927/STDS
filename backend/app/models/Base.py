@@ -1,4 +1,4 @@
-from fastapi import HTTPException
+from fastapi import HTTPException, Response, status
 from ..config.firebase import firebase
 from ..config.cache import CacheHandler
 from ..config.logger import logger
@@ -7,44 +7,85 @@ from typing import TypeVar, Generic, Type, Any
 from pydantic import BaseModel, Field
 from abc import ABC
 from typing import List, Optional
+import time , random ,string
 
-# 定義一個泛型類型 T，它必須是 BaseModel 的子類
 T = TypeVar('T', bound=BaseModel)
 
 class Access(BaseModel):
     type: str = Field(..., pattern="^(internal|external)$")  # 限制只能是 internal 或 external
     companies: List[str]
-    allowClients: str
+    allowClients: Optional[str]
 
-# 使用泛型的基礎類別
+
 class BaseHandler(Generic[T],ABC):
     def __init__(self, uid: str):
         """
         初始化處理器模型
         
         Args:
-            access_company: 權限識別資料
+            uid: 識別使用者
         """
         self.cache = CacheHandler()
         self.db = firebase.db
         self.logging = logger
         self.collection_name: str = ""
-        self.cache_catagory: str = ""
+        self.cache_category: str = ""
+        self.id_prefix: str = ""
         self.model_class: Type[T] = None
         self.User = UserHandler(uid)
         self.uid = uid
-    
+    async def delete_item(self, item_id: str) -> Response:
+        '''
+        刪除單一物件
 
-    async def get_item(self,item_id:str) -> Optional[T]:
+        Args:
+            item_id:要刪除的物件id 
+        '''
+        
+        try:
+            doc_ref = self.db.collection(self.collection_name).document(item_id)
+            item = doc_ref.get().to_dict()
+            if item is None:
+                raise HTTPException(status_code=404, detail=f"{str(item_id)} is not exist")
+            deleted_item = self.model_class(**item)
+            if not self._has_access(deleted_item.access.companies):
+                self.logging.info(f"{str(self.uid)}has no access to item :{str(item_id)}")
+                raise HTTPException(status_code=403,detail=f"{str(self.uid)}has no access to item :{str(item_id)}")
+            
+            if self.cache.get(self.cache_category,item_id) is not None:
+                self.cache.delete(self.cache_category,item_id)
+            self.db.collection(self.collection_name).document(item_id).delete()
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            self.logging.error(f"{str(self.id_prefix)}_Handler.delete_item error: {str(e)}")
+            raise HTTPException(status_code=500,detail=f"{str(self.id_prefix)}_Handler.delete_item error: {str(e)}")
+        
+    async def post_item(self, item: T):
+        '''
+        創建單一物件
+        Args:
+            item: 類別
+        '''
+        return await self._save_item(item,"post")
+
+    async def put_item(self, item:T):
+        '''
+        更新單一物件
+        Args:
+            info: 更新資料內容
+        '''
+        return await self._save_item(item,"put")
+
+    async def get_item(self, item_id: str) -> Optional[T]:
         '''
         取得單一物件，同時檢查是否有權限取得若無返回None
         Args:
             item_id: 物件id
         '''
         try:
-            cache_data = self.cache.get(self.cache_catagory,item_id)
+            cache_data = self.cache.get(self.cache_category,item_id)
             if cache_data:
-                item = self.model_class(**cache_data)
+                item = cache_data
             else:
                 doc_ref = self.db.collection(self.collection_name).document(item_id)
                 doc = doc_ref.get()
@@ -53,15 +94,17 @@ class BaseHandler(Generic[T],ABC):
                 else:
                     return None
                 
-                self.cache.set(self.cache_catagory,item.id,item)
+                self.cache.set(self.cache_category,item.id,item)
 
             if await self._has_access(item.access.companies):
                 return item
-            return None
-
+            else:
+                self.logging.info(f"{str(self.uid)}has no access to item :{str(item_id)}")
+                raise HTTPException(status_code=403,detail=f"{str(self.uid)}has no access to item :{str(item_id)}")
 
         except Exception as e:
-            raise HTTPException(status_code=500,detail=f"{str(e)}")
+            self.logging.error(f"{str(self.id_prefix)}_Handler.get_item error: {str(e)}")
+            raise HTTPException(status_code=500,detail=f"{str(self.id_prefix)}_Handler.get_item error: {str(e)}")
         
 
     async def get_item_list(self) -> List[Any]:
@@ -71,21 +114,53 @@ class BaseHandler(Generic[T],ABC):
         try:
             ##只獲取文檔的參考資訊（ID和路徑），不包含文檔內容
             result = []
-            docs = self.db.collection(self.cache_catagory).list_documents()
+            docs = self.db.collection(self.cache_category).list_documents()
             for doc in docs:
-                item = self.cache.get(self.cache_catagory,doc.id)
-                if item:
-                    result.append(item)
-                else:
-                    doc_ref = self.db.collection(self.cache_catagory).document(doc.id)
-                    item = self.model_class(**doc_ref.get().to_dict())
-                    self.cache.set(self.cache_catagory,item.id,item)
+                doc_ref = self.db.collection(self.cache_category).document(doc.id)
+                item = self.model_class(**doc_ref.get().to_dict())
+                self.cache.set(self.cache_category,item.id,item)
                 if item is not None and self._has_access(item.access.companies):
                     result.append(item)
             return result
         except Exception as e:
-            raise HTTPException(status_code=500,detail=f"PropertyHandler.get_item_list error: {str(e)}")
+            self.logging.error(f"{str(self.id_prefix)}_Handler.get_item_list error: {str(e)}")
+            raise HTTPException(status_code=500,detail=f"{str(self.id_prefix)}_Handler.get_item_list error: {str(e)}")
+        
+    async def get_cache_status(self) -> dict:
+        try:
+            return self.cache.get_cache_stats_category(self.cache_category)
+        except Exception as e:
+            self.logging.error(f"{str(self.id_prefix)}_Handler.get_cache_status error: {str(e)}")
+            raise HTTPException(status_code=500,detail=f"{str(self.id_prefix)}_Handler.get_cache_status error: {str(e)}")
             
 
-    async def _has_access(self, access_list):
+    async def _has_access(self, access_list) -> bool:
         return await self.User.get_access() in access_list
+    
+    async def _save_item(self, item:T,method : str) -> dict:
+        '''
+        新增，更新單一物件共用邏輯
+        Args:
+            item: 完整的item類型
+        '''
+        try:
+            if method is "post" or (method is "put" and self._has_access(item.access.companies)):
+                data = item.model_dump()
+                self.db.collection(self.collection_name).document(item.id).set(data)
+                self.cache.set(self.cache_category,item.id,item)
+
+                return data
+            else:
+                self.logging.info(f"{str(self.uid)}has no access to item :{str(item.id)}")
+                raise HTTPException(status_code=403,detail=f"{str(self.uid)}has no access to item :{str(item.id)}")
+        except Exception as e:
+            self.logging.error(f"{str(self.id_prefix)}_Handler._save_item error: {str(e)}")
+            raise HTTPException(status_code=500,detail=f"{str(self.id_prefix)}_Handler._save_item error: {str(e)}")
+    
+    def id_generate(self) -> str:
+        '''
+        產生隨機id 返回產生結果
+        '''
+        timestamp = int(time.time() * 1000)
+        random_str = ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(5))
+        return f"{self.id_prefix}_{timestamp}_{random_str}"
