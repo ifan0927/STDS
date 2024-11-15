@@ -41,7 +41,6 @@ class BaseHandler(Generic[T],ABC):
         Args:
             item_id:要刪除的物件id 
         '''
-        
         try:
             doc_ref = self.db.collection(self.collection_name).document(item_id)
             item = doc_ref.get().to_dict()
@@ -60,7 +59,7 @@ class BaseHandler(Generic[T],ABC):
             self.logging.error(f"{str(self.id_prefix)}_Handler.delete_item error: {str(e)}")
             raise HTTPException(status_code=500,detail=f"{str(self.id_prefix)}_Handler.delete_item error: {str(e)}")
         
-    async def post_item(self, item: T):
+    async def post_item(self, item: T) -> T:
         '''
         創建單一物件
         Args:
@@ -68,7 +67,7 @@ class BaseHandler(Generic[T],ABC):
         '''
         return await self._save_item(item,"post")
 
-    async def put_item(self, item:T):
+    async def put_item(self, item:T) -> T:
         '''
         更新單一物件
         Args:
@@ -149,7 +148,7 @@ class BaseHandler(Generic[T],ABC):
                 self.db.collection(self.collection_name).document(item.id).set(data)
                 self.cache.set(self.cache_category,item.id,item)
 
-                return data
+                return item
             else:
                 self.logging.info(f"{str(self.uid)}has no access to item :{str(item.id)}")
                 raise HTTPException(status_code=403,detail=f"{str(self.uid)}has no access to item :{str(item.id)}")

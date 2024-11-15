@@ -1,5 +1,5 @@
 from fastapi import HTTPException
-from .Base import BaseHandler
+from .Base import BaseHandler, Access
 
 class LeasesHandler(BaseHandler):
         
@@ -14,5 +14,3 @@ class LeasesHandler(BaseHandler):
             Optional[List[Dict[str, Any]]]: 租約清單或 None (若無資料)
         '''
         return 
-
-        
