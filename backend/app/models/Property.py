@@ -1,8 +1,7 @@
-from fastapi import HTTPException
 from .Base import BaseHandler, Access
-from pydantic import BaseModel,Field
-from typing import Optional , List 
-from decimal import Decimal
+from pydantic import BaseModel, Field
+from typing import Optional, List 
+
 
 class Property(BaseModel):
     id : str

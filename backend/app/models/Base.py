@@ -6,7 +6,7 @@ from .Users import UserHandler
 from typing import TypeVar, Generic, Type, Any
 from pydantic import BaseModel, Field
 from abc import ABC
-from typing import List, Optional
+from typing import Optional, List, Dict
 import time , random ,string
 
 T = TypeVar('T', bound=BaseModel)
@@ -136,7 +136,7 @@ class BaseHandler(Generic[T],ABC):
     async def _has_access(self, access_list) -> bool:
         return await self.User.get_access() in access_list
     
-    async def _save_item(self, item:T,method : str) -> dict:
+    async def _save_item(self, item:T,method : str) -> Dict:
         '''
         新增，更新單一物件共用邏輯
         Args:
@@ -158,8 +158,29 @@ class BaseHandler(Generic[T],ABC):
     
     def id_generate(self) -> str:
         '''
-        產生隨機id 返回產生結果
+        Generate randomize id based on handler's prefix
+
+        Returns:
+            randomize id with prefix
         '''
         timestamp = int(time.time() * 1000)
         random_str = ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(5))
         return f"{self.id_prefix}_{timestamp}_{random_str}"
+    
+
+class PropertyRelatedHandler(BaseHandler):
+    """Handling property related operation"""
+    
+    async def find_by_property_id(self, property_id: str) -> List[Dict]:
+        try:
+            pass
+        except Exception as e:
+            self.logging.error(f"{str(self.id_prefix)}_Handler.find_by_property_id error: {str(e)}")
+            raise HTTPException(status_code=500,detail=f"{str(self.id_prefix)}_Handler.find_by_property_id: {str(e)}")
+        
+    async def make_property_related_index(self, property_id: str) -> List[Dict]:
+        try:
+            pass
+        except Exception as e:
+            self.logging.error(f"{str(self.id_prefix)}_Handler.make_property_related_index error: {str(e)}")
+            raise HTTPException(status_code=500,detail=f"{str(self.id_prefix)}_Handler.make_property_related_index: {str(e)}")

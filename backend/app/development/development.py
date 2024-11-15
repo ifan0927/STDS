@@ -1,39 +1,38 @@
 from fastapi import APIRouter,HTTPException,Depends,Response,status
 from ..dependency.dependencies import get_app_settings
-from ..models.Property import PropertyHandler , Property
+from ..models.Property import PropertyHandler, Property
+from ..models.Tenant import TenantHandler, Tenant
+from ..models.Leases import LeasesHandler, Lease
+from ..models.Room import RoomHandler, Room
 from firebase_admin import auth
 import requests 
 import json
+from pathlib import Path
 
-with open('key.json', 'r') as f:
+# 取得目前檔案的目錄
+BASE_DIR = Path(__file__).resolve().parent
+# 組合檔案路徑
+json_path = BASE_DIR / "api_key.json"
+
+with open(json_path, 'r') as f:
     data = json.load(f)
     api_key = data["key"]
 
 router = APIRouter(prefix="/development")
 
-@router.post("/test-post",tags=['development'])
-async def post_test_data(item : Property,setting = Depends(get_app_settings)):
+@router.get("/test_route",tags=['development'])
+async def test_rout(setting = Depends(get_app_settings)):
     if not setting['debug']:
         raise HTTPException(status_code=404)
+    room_handler = RoomHandler('test')
+    lease_handler = LeasesHandler('test')
+    tenant_handler = TenantHandler('test')
+    result = []
+    result.append(await room_handler.get_item("ROOM_1731656683899_0pz1s"))
+    result.append(await lease_handler.get_item("LEAS_1731656683903_Nxegc"))
+    result.append(await tenant_handler.get_item("TENA_1731656683917_OzWbh"))
+    return result
     
-    try:
-        handler = PropertyHandler('test')
-        item.id = handler.id_generate()
-        return await handler.post_item(item)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"dev_test error : {str(e)}")
-    
-@router.put("/test-post/{id}",tags=['development'])
-async def post_test_data(id: str,info : Property,setting = Depends(get_app_settings)):
-    if not setting['debug']:
-        raise HTTPException(status_code=404)
-    
-    try:
-        handler = PropertyHandler('test')
-        return await handler.put_item(info)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"dev_test error : {str(e)}")
-
 
 @router.get("/check-cache-status",tags=['development'])
 async def check_cache_status(setting = Depends(get_app_settings)):
@@ -46,16 +45,7 @@ async def check_cache_status(setting = Depends(get_app_settings)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"dev_test error : {str(e)}")
 
-@router.delete("/test-delete/{id}",tags=['development'])
-async def post_test_data(id : str,setting = Depends(get_app_settings)):
-    if not setting['debug']:
-        raise HTTPException(status_code=404)
-    
-    try:
-        handler = PropertyHandler('test')
-        return await handler.delete_item(id)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"dev_test error : {str(e)}")
+
 
 
 # 開發用的測試路由

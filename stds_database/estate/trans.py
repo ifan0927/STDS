@@ -179,7 +179,7 @@ def create_leases(row:dict) ->Leases:
         note = clean_html(row.get('estate_rent_note','').strip()),
         mini_note = row.get('estate_rent_pet','').strip(),
         property_id=rooms_property_map[room_id],
-        tenant_id=str(old_tenant_id),
+        tenant_id=old_tenant_id,
         room_id = room_id, #存舊的抓新的
         file = [],
         access=access
@@ -272,7 +272,9 @@ if __name__ == "__main__":
     logs = csv_to_objects("csv/xx_estate_schedule.csv", create_estate_logs)
     electrics = csv_to_objects("csv/xx_estate_electric.csv", create_electric_logs)
 
-    
+    for _,value in leases.items():
+        new_id = tenants_id_map[value.tenant_id]
+        value.tenant_id = new_id
     write_to_json("properties.json",properties)
     write_to_json("rooms.json",rooms)
     write_to_json("leases.json",leases)
