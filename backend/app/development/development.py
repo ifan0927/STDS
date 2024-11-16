@@ -1,9 +1,7 @@
 from fastapi import APIRouter,HTTPException,Depends,Response,status
 from ..dependency.dependencies import get_app_settings
 from ..models.Property import PropertyHandler, Property
-from ..models.Tenant import TenantHandler, Tenant
-from ..models.Leases import LeasesHandler, Lease
-from ..models.Room import RoomHandler, Room
+from ..models.Service import PropertyService
 from firebase_admin import auth
 import requests 
 import json
@@ -24,14 +22,10 @@ router = APIRouter(prefix="/development")
 async def test_rout(setting = Depends(get_app_settings)):
     if not setting['debug']:
         raise HTTPException(status_code=404)
-    room_handler = RoomHandler('test')
-    lease_handler = LeasesHandler('test')
-    tenant_handler = TenantHandler('test')
-    result = []
-    result.append(await room_handler.get_item("ROOM_1731656683899_0pz1s"))
-    result.append(await lease_handler.get_item("LEAS_1731656683903_Nxegc"))
-    result.append(await tenant_handler.get_item("TENA_1731656683917_OzWbh"))
-    return result
+    service = PropertyService('test')
+    
+    
+    return await service.get_occupancy_status("PROP_1731656683897_M7FWV")
     
 
 @router.get("/check-cache-status",tags=['development'])

@@ -5,11 +5,26 @@ from ..config.logger import logger
 from .Users import UserHandler
 from typing import TypeVar, Generic, Type, Any
 from pydantic import BaseModel, Field
+from enum import Enum
 from abc import ABC
 from typing import Optional, List, Dict
 import time , random ,string
 
 T = TypeVar('T', bound=BaseModel)
+
+class PropertyResourceType(Enum):
+    CACHE = 'property_index_cache'
+    COLLECTION = 'property_resource_index'
+    ROOM = 'property_room_index'
+    LEASES = 'property_lease_index'
+
+    @classmethod
+    def get_resource_type(cls, prefix: str) -> Optional[str]:
+        prefix_mapping = {
+            'ROOM': cls.ROOM.value,
+            'LEAS': cls.LEASES.value
+        }
+        return prefix_mapping.get(prefix)
 
 class Access(BaseModel):
     type: str = Field(..., pattern="^(internal|external)$")  # 限制只能是 internal 或 external
@@ -75,16 +90,18 @@ class BaseHandler(Generic[T],ABC):
         '''
         return await self._save_item(item,"put")
 
-    async def get_item(self, item_id: str) -> Optional[T]:
+    async def get_item(self, item_id: str, default = True) -> Optional[T]:
         '''
         取得單一物件，同時檢查是否有權限取得若無返回None
         Args:
             item_id: 物件id
         '''
         try:
+            
             cache_data = self.cache.get(self.cache_category,item_id)
             if cache_data:
                 item = cache_data
+                
             else:
                 doc_ref = self.db.collection(self.collection_name).document(item_id)
                 doc = doc_ref.get()
@@ -97,13 +114,40 @@ class BaseHandler(Generic[T],ABC):
 
             if await self._has_access(item.access.companies):
                 return item
-            else:
+            elif default is True:
                 self.logging.info(f"{str(self.uid)}has no access to item :{str(item_id)}")
                 raise HTTPException(status_code=403,detail=f"{str(self.uid)}has no access to item :{str(item_id)}")
+            else:
+                return None
 
         except Exception as e:
             self.logging.error(f"{str(self.id_prefix)}_Handler.get_item error: {str(e)}")
             raise HTTPException(status_code=500,detail=f"{str(self.id_prefix)}_Handler.get_item error: {str(e)}")
+        
+    async def get_items(self, id_list) -> Dict[str, T]:
+        '''
+        get list of items base on the input list which contain id
+
+        Args:
+            id_list : [str]
+        Return:
+            List[T]
+        '''
+        try:
+            resources = {}
+            
+            for id in id_list:
+                resource = await self.get_item(id, False)
+                if resource is not None:
+                    if self.id_prefix == "LEAS" and not resource.status:
+                        continue
+                    resources[resource.id] = resource
+            return resources
+
+        except Exception as e:
+            self.logging.error(f"{str(self.id_prefix)}_Handler.get_items error: {str(e)}")
+            raise HTTPException(status_code=500,detail=f"{str(self.id_prefix)}_Handler.get_items error: {str(e)}")
+
         
 
     async def get_item_list(self) -> List[Any]:
@@ -125,6 +169,7 @@ class BaseHandler(Generic[T],ABC):
             self.logging.error(f"{str(self.id_prefix)}_Handler.get_item_list error: {str(e)}")
             raise HTTPException(status_code=500,detail=f"{str(self.id_prefix)}_Handler.get_item_list error: {str(e)}")
         
+        
     async def get_cache_status(self) -> dict:
         try:
             return self.cache.get_cache_stats_category(self.cache_category)
@@ -142,8 +187,9 @@ class BaseHandler(Generic[T],ABC):
         Args:
             item: 完整的item類型
         '''
+        
         try:
-            if method is "post" or (method is "put" and self._has_access(item.access.companies)):
+            if method == "post" or (method == "put" and self._has_access(item.access.companies)):
                 data = item.model_dump()
                 self.db.collection(self.collection_name).document(item.id).set(data)
                 self.cache.set(self.cache_category,item.id,item)
@@ -171,16 +217,20 @@ class BaseHandler(Generic[T],ABC):
 class PropertyRelatedHandler(BaseHandler):
     """Handling property related operation"""
     
-    async def find_by_property_id(self, property_id: str) -> List[Dict]:
+    async def find_by_property_id(self, property_id: str) -> Dict[str, T]:
         try:
-            pass
+            cache_data = self.cache.get(PropertyResourceType.CACHE.value, PropertyResourceType.get_resource_type(self.id_prefix))
+            if cache_data is None :
+                doc_ref = self.db.collection(PropertyResourceType.COLLECTION.value).document(PropertyResourceType.get_resource_type(self.id_prefix))
+                resource = doc_ref.get().to_dict()
+                self.cache.set(PropertyResourceType.CACHE.value, PropertyResourceType.get_resource_type(self.id_prefix), resource)
+            else:
+                resource = cache_data
+                
+            ids = resource[property_id]
+            return await self.get_items(ids)
+        
         except Exception as e:
             self.logging.error(f"{str(self.id_prefix)}_Handler.find_by_property_id error: {str(e)}")
             raise HTTPException(status_code=500,detail=f"{str(self.id_prefix)}_Handler.find_by_property_id: {str(e)}")
         
-    async def make_property_related_index(self, property_id: str) -> List[Dict]:
-        try:
-            pass
-        except Exception as e:
-            self.logging.error(f"{str(self.id_prefix)}_Handler.make_property_related_index error: {str(e)}")
-            raise HTTPException(status_code=500,detail=f"{str(self.id_prefix)}_Handler.make_property_related_index: {str(e)}")
