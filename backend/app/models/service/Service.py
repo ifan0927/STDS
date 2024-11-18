@@ -1,12 +1,12 @@
 from fastapi import HTTPException
-from .Property import PropertyHandler
-from .Room import RoomHandler
-from .Tenant import TenantHandler
-from .Leases import LeasesHandler
+from ..properties_management.Property import PropertyHandler
+from ..properties_management.Room import RoomHandler
+from ..properties_management.Tenant import TenantHandler
+from ..properties_management.Leases import LeasesHandler
 from typing import List, Dict 
-from ..config.logger import logger
-from ..config.exception import CacheError
-
+from ...config.logger import logger
+from ...config.exception import CacheError
+from datetime import datetime
 class PropertyService:
     
     def __init__(self, uid: str):
@@ -51,14 +51,17 @@ class PropertyService:
         """
         try:
             result = {}
-            rooms = await self.room_handler.find_by_property_id(property_id)
-            leases = await self.lease_handler.find_by_property_id(property_id)
+            a = datetime.now()
+            rooms = await self.room_handler.get_resources_by_property_id(property_id)
+            leases = await self.lease_handler.get_resources_by_property_id(property_id)
+            b = datetime.now()
+            print(b-a)
 
 
             if len(leases) > len(rooms):
                 self.logging.debug(f"{property_id}: leases number doesn't match rooms number")
                 raise HTTPException(status_code=500, detail=f"{property_id}: leases number doesn't match rooms number")    
-            
+            a = datetime.now()
             # tracking room is occupy or not
             rooms_occupancy_success_status = {}
             rooms_occupancy_error_status = {}
@@ -91,7 +94,10 @@ class PropertyService:
                         'lease_time_end' : None,
                         'lease_time_early' : None
                      }
+            b = datetime.now()
+            print(b-a)
 
+            a = datetime.now()
             
             for _, room in rooms.items():
                 rooms_occupancy_success_status[room.id] = {
@@ -105,7 +111,8 @@ class PropertyService:
                     'lease_time_end' : None,
                     'lease_time_early' : None
                 }
-
+            b = datetime.now()
+            print(b-a)
             result['error'] = rooms_occupancy_error_status
             result['success'] = rooms_occupancy_success_status
             return result

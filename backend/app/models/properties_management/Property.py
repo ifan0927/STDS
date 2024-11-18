@@ -1,4 +1,4 @@
-from .Base import BaseHandler, Access
+from ..Base import BaseHandler, Access
 from pydantic import BaseModel, Field
 from typing import Optional, List 
 
@@ -12,7 +12,7 @@ class Property(BaseModel):
     owner: str
     note: Optional[str]
     facilities: List[str]
-    electric_price: float   # 限制合理範圍
+    electric_price: float   
     electric_month: str = Field(..., pattern="^(單月|雙月)$")  # 限制只能是單月或雙月
     file: List[str] = []
     access: Access

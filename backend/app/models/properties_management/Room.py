@@ -1,4 +1,4 @@
-from .Base import PropertyRelatedHandler, Access
+from ..Base import PropertyRelatedHandler, Access
 from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 from typing import Optional, List, Dict, Union

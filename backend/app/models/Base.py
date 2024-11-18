@@ -9,6 +9,7 @@ from enum import Enum
 from abc import ABC
 from typing import Optional, List, Dict
 import time , random ,string
+import asyncio
 
 T = TypeVar('T', bound=BaseModel)
 
@@ -58,9 +59,10 @@ class BaseHandler(Generic[T],ABC):
         '''
         try:
             doc_ref = self.db.collection(self.collection_name).document(item_id)
-            item = doc_ref.get().to_dict()
-            if item is None:
+            doc = doc_ref.get()
+            if not doc.exists:
                 raise HTTPException(status_code=404, detail=f"{str(item_id)} is not exist")
+            item = doc.to_dict()
             deleted_item = self.model_class(**item)
             if not self._has_access(deleted_item.access.companies):
                 self.logging.info(f"{str(self.uid)}has no access to item :{str(item_id)}")
@@ -105,9 +107,12 @@ class BaseHandler(Generic[T],ABC):
             else:
                 doc_ref = self.db.collection(self.collection_name).document(item_id)
                 doc = doc_ref.get()
-                if doc: 
+                if doc.exists: 
+                    
+
                     item = self.model_class(**doc.to_dict())
                 else:
+                    print(f'找不到 ID 為 {item_id} 的文件')
                     return None
                 
                 self.cache.set(self.cache_category,item.id,item)
@@ -125,28 +130,59 @@ class BaseHandler(Generic[T],ABC):
             raise HTTPException(status_code=500,detail=f"{str(self.id_prefix)}_Handler.get_item error: {str(e)}")
         
     async def get_items(self, id_list) -> Dict[str, T]:
-        '''
-        get list of items base on the input list which contain id
-
-        Args:
-            id_list : [str]
-        Return:
-            List[T]
-        '''
         try:
             resources = {}
+            uncached_ids = []
             
-            for id in id_list:
-                resource = await self.get_item(id, False)
-                if resource is not None:
-                    if self.id_prefix == "LEAS" and not resource.status:
+            # 檢查快取
+            for item_id in id_list:
+                cache_data = self.cache.get(self.cache_category, item_id)
+                if cache_data:
+                    if self.id_prefix == "LEAS" and not cache_data.status:
                         continue
-                    resources[resource.id] = resource
+                    resources[cache_data.id] = cache_data
+                else:
+                    uncached_ids.append(item_id)
+
+            async def fetch_batch(batch_ids):
+                batch_resources = {}
+                docs = self.db.collection(self.collection_name)\
+                            .where('id', 'in', batch_ids)\
+                            .stream()
+                            
+                for doc in docs:
+                    item = self.model_class(**doc.to_dict())
+                    if await self._has_access(item.access.companies):
+                        if self.id_prefix == "LEAS" and not item.status:
+                            continue
+                        batch_resources[item.id] = item
+                        # 更新快取
+                        self.cache.set(self.cache_category, item.id, item)
+                return batch_resources
+
+            # 批次處理未快取的文檔
+            if uncached_ids:
+                # 將 ID 列表分成每組 30 個
+                batch_size = 30
+                tasks = []
+                
+                for i in range(0, len(uncached_ids), batch_size):
+                    batch_ids = uncached_ids[i:i + batch_size]
+                    tasks.append(fetch_batch(batch_ids))
+                
+                # 併發執行所有批次
+                batch_results = await asyncio.gather(*tasks)
+                
+                # 合併結果
+                for batch_result in batch_results:
+                    resources.update(batch_result)
+                        
             return resources
 
         except Exception as e:
             self.logging.error(f"{str(self.id_prefix)}_Handler.get_items error: {str(e)}")
-            raise HTTPException(status_code=500,detail=f"{str(self.id_prefix)}_Handler.get_items error: {str(e)}")
+            raise HTTPException(status_code=500,
+                detail=f"{str(self.id_prefix)}_Handler.get_items error: {str(e)}")
 
         
 
@@ -157,7 +193,7 @@ class BaseHandler(Generic[T],ABC):
         try:
             ##只獲取文檔的參考資訊（ID和路徑），不包含文檔內容
             result = []
-            docs = self.db.collection(self.cache_category).list_documents()
+            docs = self.db.collection(self.cache_category).list_documents()   
             for doc in docs:
                 doc_ref = self.db.collection(self.cache_category).document(doc.id)
                 item = self.model_class(**doc_ref.get().to_dict())
@@ -178,8 +214,7 @@ class BaseHandler(Generic[T],ABC):
             raise HTTPException(status_code=500,detail=f"{str(self.id_prefix)}_Handler.get_cache_status error: {str(e)}")
             
 
-    async def _has_access(self, access_list) -> bool:
-        return await self.User.get_access() in access_list
+    
     
     async def _save_item(self, item:T,method : str) -> Dict:
         '''
@@ -214,10 +249,24 @@ class BaseHandler(Generic[T],ABC):
         return f"{self.id_prefix}_{timestamp}_{random_str}"
     
 
+class PropertyLogHandler(BaseHandler):
+    pass
+
+
 class PropertyRelatedHandler(BaseHandler):
     """Handling property related operation"""
-    
-    async def find_by_property_id(self, property_id: str) -> Dict[str, T]:
+    async def get_id_list_by_property_id(self, property_id:str)-> List[str]:
+        """return the id list of resource which belong to the specific property_id
+
+        Args:
+            property_id (str): property_id which want to search
+
+        Raises:
+            HTTPException: internal error
+
+        Returns:
+            List[str]: the id list of the object
+        """
         try:
             cache_data = self.cache.get(PropertyResourceType.CACHE.value, PropertyResourceType.get_resource_type(self.id_prefix))
             if cache_data is None :
@@ -226,11 +275,30 @@ class PropertyRelatedHandler(BaseHandler):
                 self.cache.set(PropertyResourceType.CACHE.value, PropertyResourceType.get_resource_type(self.id_prefix), resource)
             else:
                 resource = cache_data
-                
-            ids = resource[property_id]
+            return resource[property_id]
+        except Exception as e:
+            self.logging.error(f"{str(self.id_prefix)}_Handler.find_by_property_id error: {str(e)}")
+            raise HTTPException(status_code=500,detail=f"{str(self.id_prefix)}_Handler.find_by_property_id: {str(e)}")
+    
+    async def get_resources_by_property_id(self, property_id: str) -> Dict[str, T]:
+        """return info of item based on which property and which handler 
+
+        Args:
+            property_id (str): property_id which want to search
+
+        Raises:
+            HTTPException: 500 , internal error
+
+        Returns:
+            Dict[str, T]: Dict with item which key is id value is object 
+        """
+        try:
+            ids = self.get_id_list_by_property_id(property_id)
             return await self.get_items(ids)
         
         except Exception as e:
             self.logging.error(f"{str(self.id_prefix)}_Handler.find_by_property_id error: {str(e)}")
             raise HTTPException(status_code=500,detail=f"{str(self.id_prefix)}_Handler.find_by_property_id: {str(e)}")
         
+    async def _has_access(self, access_list) -> bool:
+        return await self.User.get_access() in access_list

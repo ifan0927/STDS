@@ -1,4 +1,4 @@
-from .Base import PropertyRelatedHandler, Access
+from ..Base import BaseHandler, Access
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict
 from datetime import date, datetime
@@ -26,7 +26,7 @@ class Tenant(BaseModel):
             return value
         raise ValueError('Invalid date format')
     
-class TenantHandler(PropertyRelatedHandler):
+class TenantHandler(BaseHandler):
 
     def __init__(self, uid: str):
         super().__init__(uid)

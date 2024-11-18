@@ -1,7 +1,7 @@
 from fastapi import APIRouter,HTTPException,Depends,Response,status
 from ..dependency.dependencies import get_app_settings
-from ..models.Property import PropertyHandler, Property
-from ..models.Service import PropertyService
+from ..models.properties_management.Property import PropertyHandler, Property
+from ..models.service.Service import PropertyService
 from firebase_admin import auth
 import requests 
 import json

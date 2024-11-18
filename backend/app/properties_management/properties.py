@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Response
-from ..models.Property import PropertyHandler, Property
+from ..models.properties_management.Property import PropertyHandler, Property
 from ..dependency.dependencies import verify_token 
 
 router = APIRouter(prefix="/properties-management")
@@ -46,7 +46,10 @@ async def get_property(
     """
 
     property_handler = PropertyHandler(token['uid'])
-    return await property_handler.get_item(property_id)
+    result = await property_handler.get_item(property_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Property:{str(property_id)} is not found")
+    return result
     
     
 @router.put("/properties/{property_id}", tags=['properties-management'])
