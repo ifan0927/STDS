@@ -1,13 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, Response
 from ..models.properties_management.Property import PropertyHandler, Property
+from ..models.properties_management.Leases import LeasesHandler, Lease
 from ..dependency.dependencies import verify_token 
+
 
 router = APIRouter(prefix="/properties-management")
 
 @router.get("/properties",tags=['properties-management'])
 async def get_properties(
     token = Depends(verify_token)
-) -> list:
+) -> dict:
     """
     get  properties list
     
@@ -20,7 +22,7 @@ async def get_properties(
         500: Internal unknown error
     """
 
-    property_handler = PropertyHandler(token['uid'])
+    property_handler = LeasesHandler(token['uid'])
     return await property_handler.get_item_list()
         
     

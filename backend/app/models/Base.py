@@ -32,6 +32,9 @@ class Access(BaseModel):
     companies: List[str]
     allowClients: Optional[str]
 
+    def has_access(self, user_access_level: str, company_access_list: List[str]) -> bool:
+        return user_access_level in company_access_list
+
 
 class BaseHandler(Generic[T],ABC):
     def __init__(self, uid: str):
@@ -64,9 +67,10 @@ class BaseHandler(Generic[T],ABC):
                 raise HTTPException(status_code=404, detail=f"{str(item_id)} is not exist")
             item = doc.to_dict()
             deleted_item = self.model_class(**item)
-            if not self._has_access(deleted_item.access.companies):
-                self.logging.info(f"{str(self.uid)}has no access to item :{str(item_id)}")
-                raise HTTPException(status_code=403,detail=f"{str(self.uid)}has no access to item :{str(item_id)}")
+            if hasattr(deleted_item, 'access'):
+                if not deleted_item.access.has_access(await self.User.get_access(), deleted_item.access.companies):
+                    self.logging.info(f"{str(self.uid)}has no access to item :{str(item_id)}")
+                    raise HTTPException(status_code=403,detail=f"{str(self.uid)}has no access to item :{str(item_id)}")
             
             if self.cache.get(self.cache_category,item_id) is not None:
                 self.cache.delete(self.cache_category,item_id)
@@ -92,7 +96,7 @@ class BaseHandler(Generic[T],ABC):
         '''
         return await self._save_item(item,"put")
 
-    async def get_item(self, item_id: str, default = True) -> Optional[T]:
+    async def get_item(self, item_id: str) -> Optional[T]:
         '''
         取得單一物件，同時檢查是否有權限取得若無返回None
         Args:
@@ -117,13 +121,12 @@ class BaseHandler(Generic[T],ABC):
                 
                 self.cache.set(self.cache_category,item.id,item)
 
-            if await self._has_access(item.access.companies):
-                return item
-            elif default is True:
-                self.logging.info(f"{str(self.uid)}has no access to item :{str(item_id)}")
-                raise HTTPException(status_code=403,detail=f"{str(self.uid)}has no access to item :{str(item_id)}")
-            else:
-                return None
+            if hasattr(item, 'access'):
+                if item.access.has_access(await self.User.get_access(), item.access.companies):
+                    return item
+                else:
+                    return None
+            return item
 
         except Exception as e:
             self.logging.error(f"{str(self.id_prefix)}_Handler.get_item error: {str(e)}")
@@ -138,27 +141,12 @@ class BaseHandler(Generic[T],ABC):
             for item_id in id_list:
                 cache_data = self.cache.get(self.cache_category, item_id)
                 if cache_data:
-                    if self.id_prefix == "LEAS" and not cache_data.status:
-                        continue
-                    resources[cache_data.id] = cache_data
+                    if hasattr(cache_data, 'access'):
+                        if cache_data.access.has_access(await self.User.get_access(), cache_data.access.companies):
+                            resources[cache_data.id] = cache_data
+                    continue
                 else:
                     uncached_ids.append(item_id)
-
-            async def fetch_batch(batch_ids):
-                batch_resources = {}
-                docs = self.db.collection(self.collection_name)\
-                            .where('id', 'in', batch_ids)\
-                            .stream()
-                            
-                for doc in docs:
-                    item = self.model_class(**doc.to_dict())
-                    if await self._has_access(item.access.companies):
-                        if self.id_prefix == "LEAS" and not item.status:
-                            continue
-                        batch_resources[item.id] = item
-                        # 更新快取
-                        self.cache.set(self.cache_category, item.id, item)
-                return batch_resources
 
             # 批次處理未快取的文檔
             if uncached_ids:
@@ -168,7 +156,7 @@ class BaseHandler(Generic[T],ABC):
                 
                 for i in range(0, len(uncached_ids), batch_size):
                     batch_ids = uncached_ids[i:i + batch_size]
-                    tasks.append(fetch_batch(batch_ids))
+                    tasks.append(self._fetch_batch(batch_ids))
                 
                 # 併發執行所有批次
                 batch_results = await asyncio.gather(*tasks)
@@ -186,21 +174,38 @@ class BaseHandler(Generic[T],ABC):
 
         
 
-    async def get_item_list(self) -> List[Any]:
+    async def get_item_list(self) -> Dict[str, T]:
         '''
         返回handler處理類別的List
         '''
         try:
             ##只獲取文檔的參考資訊（ID和路徑），不包含文檔內容
-            result = []
-            docs = self.db.collection(self.cache_category).list_documents()   
+            tasks = []
+            uncached_ids = []
+            resources = {}
+            docs = self.db.collection(self.collection_name).list_documents()   
             for doc in docs:
-                doc_ref = self.db.collection(self.cache_category).document(doc.id)
-                item = self.model_class(**doc_ref.get().to_dict())
-                self.cache.set(self.cache_category,item.id,item)
-                if item is not None and self._has_access(item.access.companies):
-                    result.append(item)
-            return result
+                
+                cache_data = self.cache.get(self.cache_category, doc.id)
+                if cache_data is not None:
+                    if hasattr(cache_data, 'access'):
+                        if cache_data.access.has_access(await self.User.get_access(), cache_data.access.companies):
+                            resources[cache_data.id] = cache_data
+                    continue
+                else:
+                    uncached_ids.append(doc.id)
+
+            if uncached_ids:
+                batch_size = 30
+                for i in range(0, len(uncached_ids),batch_size):
+                    batch_ids = uncached_ids[i:i + batch_size]
+                    tasks.append(self._fetch_batch(batch_ids))
+            if tasks:
+                batch_results = await asyncio.gather(*tasks)
+                for batch_result in batch_results:
+                    resources.update(batch_result)
+
+            return resources
         except Exception as e:
             self.logging.error(f"{str(self.id_prefix)}_Handler.get_item_list error: {str(e)}")
             raise HTTPException(status_code=500,detail=f"{str(self.id_prefix)}_Handler.get_item_list error: {str(e)}")
@@ -214,7 +219,24 @@ class BaseHandler(Generic[T],ABC):
             raise HTTPException(status_code=500,detail=f"{str(self.id_prefix)}_Handler.get_cache_status error: {str(e)}")
             
 
-    
+    async def _fetch_batch(self, batch_ids) -> Dict[str, T]:
+        batch_resources = {}
+        docs = self.db.collection(self.collection_name)\
+                    .where('id', 'in', batch_ids)\
+                    .stream()
+                    
+        for doc in docs:
+            item = self.model_class(**doc.to_dict())
+            # 檢查權限並決定是否加入結果
+            has_permission = (
+                not hasattr(item, 'access') or 
+                item.access.has_access(await self.User.get_access(), item.access.companies)
+            )
+            if has_permission:
+                batch_resources[item.id] = item
+                self.cache.set(self.cache_category, item.id, item)
+
+        return batch_resources
     
     async def _save_item(self, item:T,method : str) -> Dict:
         '''
@@ -224,15 +246,22 @@ class BaseHandler(Generic[T],ABC):
         '''
         
         try:
-            if method == "post" or (method == "put" and self._has_access(item.access.companies)):
+            async def save_to_db():
+
                 data = item.model_dump()
                 self.db.collection(self.collection_name).document(item.id).set(data)
                 self.cache.set(self.cache_category,item.id,item)
 
                 return item
-            else:
-                self.logging.info(f"{str(self.uid)}has no access to item :{str(item.id)}")
-                raise HTTPException(status_code=403,detail=f"{str(self.uid)}has no access to item :{str(item.id)}")
+            if method == "post":
+                return await save_to_db()
+            elif method == "put":
+                if hasattr(item, 'access'):
+                    if not item.access.has_access(await self.User.get_access(), item.access.companies):
+                        self.logging.info(f"{str(self.uid)}has no access to item :{str(item.id)}")
+                        raise HTTPException(status_code=403,detail=f"{str(self.uid)}has no access to item :{str(item.id)}")
+                return await save_to_db()
+            
         except Exception as e:
             self.logging.error(f"{str(self.id_prefix)}_Handler._save_item error: {str(e)}")
             raise HTTPException(status_code=500,detail=f"{str(self.id_prefix)}_Handler._save_item error: {str(e)}")
@@ -248,6 +277,7 @@ class BaseHandler(Generic[T],ABC):
         random_str = ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(5))
         return f"{self.id_prefix}_{timestamp}_{random_str}"
     
+
 
 class PropertyLogHandler(BaseHandler):
     pass
@@ -300,5 +330,3 @@ class PropertyRelatedHandler(BaseHandler):
             self.logging.error(f"{str(self.id_prefix)}_Handler.find_by_property_id error: {str(e)}")
             raise HTTPException(status_code=500,detail=f"{str(self.id_prefix)}_Handler.find_by_property_id: {str(e)}")
         
-    async def _has_access(self, access_list) -> bool:
-        return await self.User.get_access() in access_list

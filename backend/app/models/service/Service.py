@@ -121,7 +121,7 @@ class PropertyService:
             self.logging.error(f"{str(self.id_prefix)}_Service.get_occupancy_status error: {str(e)}")
             raise HTTPException(status_code=500,detail=f"{str(self.id_prefix)}_Service._save_item error: {str(e)}")
         
-    async def make_property_index(self):
+    """ async def make_property_index(self):
         try:
             property_room_index  = {
                 "PROP_1731656683897_M7FWV" : [], 
@@ -185,5 +185,5 @@ class PropertyService:
 
             return True
         except Exception as e:
-            raise HTTPException(status_code=500 , detail=f"make_index_error {str(e)}")
+            raise HTTPException(status_code=500 , detail=f"make_index_error {str(e)}") """
         
